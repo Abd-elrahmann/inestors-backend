@@ -1,9 +1,9 @@
-const FinancialYear = require('../models/FinancialYear');
-const YearlyProfitDistribution = require('../models/YearlyProfitDistribution');
-const Transaction = require('../models/Transaction');
-const Investor = require('../models/Investor');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error, getPaginationInfo } = require('../utils/responseHandler');
+const FinancialYear = require('../../models/FinancialYear');
+const YearlyProfitDistribution = require('../../models/YearlyProfitDistribution');
+const Transaction = require('../../models/Transaction');
+const Investor = require('../../models/Investor');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error, getPaginationInfo } = require('../../utils/responseHandler');
 const { createProfitNotifications } = require('./notifications');
 
 // دالة مساعدة لتحديث حالة السنة المالية بناءً على حالة التوزيعات

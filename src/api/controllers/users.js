@@ -1,6 +1,6 @@
-const User = require('../models/User');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error } = require('../utils/responseHandler');
+const User = require('../../models/User');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error } = require('../../utils/responseHandler');
 
 // @desc    Get all users
 // @route   GET /api/users

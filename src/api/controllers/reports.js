@@ -1,15 +1,15 @@
-const Investor = require('../models/Investor');
-const FinancialYear = require('../models/FinancialYear');
-const YearlyProfitDistribution = require('../models/YearlyProfitDistribution');
-const Transaction = require('../models/Transaction');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error } = require('../utils/responseHandler');
+const Investor = require('../../models/Investor');
+const FinancialYear = require('../../models/FinancialYear');
+const YearlyProfitDistribution = require('../../models/YearlyProfitDistribution');
+const Transaction = require('../../models/Transaction');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error } = require('../../utils/responseHandler');
 const { 
   exportProfitDistributionToPDF, 
   exportProfitDistributionToExcel,
   exportInvestorReportToPDF,
   cleanupOldExports 
-} = require('../utils/reportExporter');
+} = require('../../services/reportExporter');
 
 // @desc    Get investor list report
 // @route   GET /api/reports/investors

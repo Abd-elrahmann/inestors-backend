@@ -1,4 +1,5 @@
 const express = require('express');
+
 const {
   getFinancialYears,
   getFinancialYear,
@@ -8,17 +9,18 @@ const {
   calculateDistributions,
   getDistributions,
   approveDistributions,
-  distributeProfits,
   rolloverProfits,
+  distributeProfits,
   closeFinancialYear,
   getFinancialYearSummary,
   toggleAutoRollover,
   executeAutoRollover
 } = require('../controllers/financialYears');
 
-const router = express.Router();
-
+// Load auth middleware
 const { protect, authorize } = require('../middlewares/auth');
+
+const router = express.Router();
 
 // All routes are protected
 router.use(protect);

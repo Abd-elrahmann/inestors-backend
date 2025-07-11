@@ -1,42 +1,46 @@
 const express = require('express');
+
 const {
   getSettings,
   updateSettings,
   updateExchangeRates,
   convertCurrency,
+  getLatestExchangeRate,
   getDisplayAmount,
   resetSettings,
   getSupportedCurrencies
 } = require('../controllers/settings');
 
-const router = express.Router();
-
+// Load auth middleware
 const { protect, authorize } = require('../middlewares/auth');
 
-// All routes are protected
+const router = express.Router();
+
+// Protect all routes
 router.use(protect);
 
-// GET /api/settings - Get system settings
+// Routes
 router.route('/')
   .get(getSettings)
   .put(authorize('admin'), updateSettings);
 
-// PUT /api/settings/exchange-rates - Update exchange rates (Admin only)
 router.route('/exchange-rates')
   .put(authorize('admin'), updateExchangeRates);
 
-// POST /api/settings/convert - Convert currency amount
+// New route for getting latest exchange rate from FastForex
+router.route('/latest-exchange-rate')
+  .get(getLatestExchangeRate);
+
 router.route('/convert')
   .post(convertCurrency);
 
-// POST /api/settings/display-amount - Get display amount based on settings
 router.route('/display-amount')
   .post(getDisplayAmount);
 
-// POST /api/settings/reset - Reset settings to default (Admin only)
-router.post('/reset', authorize('admin'), resetSettings);
+router.route('/reset')
+  .post(authorize('admin'), resetSettings);
 
-// GET /api/settings/currencies - Get supported currencies
-router.get('/currencies', getSupportedCurrencies);
+router.route('/currencies')
+  .get(getSupportedCurrencies);
 
 module.exports = router; 

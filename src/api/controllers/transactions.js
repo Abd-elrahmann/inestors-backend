@@ -1,7 +1,7 @@
-const Transaction = require('../models/Transaction');
-const Investor = require('../models/Investor');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error, getPaginationInfo } = require('../utils/responseHandler');
+const Transaction = require('../../models/Transaction');
+const Investor = require('../../models/Investor');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error, getPaginationInfo } = require('../../utils/responseHandler');
 const fs = require('fs');
 const path = require('path');
 

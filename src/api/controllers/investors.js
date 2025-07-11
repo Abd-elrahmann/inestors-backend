@@ -1,8 +1,8 @@
-const Investor = require('../models/Investor');
-const Transaction = require('../models/Transaction');
-const YearlyProfitDistribution = require('../models/YearlyProfitDistribution');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error, getPaginationInfo } = require('../utils/responseHandler');
+const Investor = require('../../models/Investor');
+const Transaction = require('../../models/Transaction');
+const YearlyProfitDistribution = require('../../models/YearlyProfitDistribution');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error, getPaginationInfo } = require('../../utils/responseHandler');
 const fs = require('fs');
 const path = require('path');
 

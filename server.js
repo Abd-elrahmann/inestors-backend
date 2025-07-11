@@ -10,20 +10,20 @@ const path = require('path');
 dotenv.config();
 
 // Import routes
-const investorRoutes = require('./src/routes/investors');
-const transactionRoutes = require('./src/routes/transactions');
-const authRoutes = require('./src/routes/auth');
-const userRoutes = require('./src/routes/users');
-const reportRoutes = require('./src/routes/reports');
-const settingsRoutes = require('./src/routes/settings');
-const financialYearRoutes = require('./src/routes/financialYears');
-const notificationsRoutes = require('./src/routes/notifications');
+const investorRoutes = require('./src/api/routes/investors');
+const transactionRoutes = require('./src/api/routes/transactions');
+const authRoutes = require('./src/api/routes/auth');
+const userRoutes = require('./src/api/routes/users');
+const reportRoutes = require('./src/api/routes/reports');
+const settingsRoutes = require('./src/api/routes/settings');
+const financialYearRoutes = require('./src/api/routes/financialYears');
+const notificationsRoutes = require('./src/api/routes/notifications');
 
 // Import error handler
-const errorHandler = require('./src/middlewares/error');
+const errorHandler = require('./src/api/middlewares/error');
 
 // Import scheduler
-const { startScheduler, stopScheduler } = require('./src/utils/scheduler');
+const { startScheduler, stopScheduler } = require('./src/jobs/scheduler');
 
 // Initialize express app
 const app = express();
@@ -36,7 +36,7 @@ app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Static files
-app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'src/api/uploads')));
 
 
 // API Routes

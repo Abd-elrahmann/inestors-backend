@@ -1,8 +1,8 @@
-const Notification = require('../models/Notification');
-const User = require('../models/User');
-const Investor = require('../models/Investor');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error, getPaginationInfo } = require('../utils/responseHandler');
+const Notification = require('../../models/Notification');
+const User = require('../../models/User');
+const Investor = require('../../models/Investor');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error, getPaginationInfo } = require('../../utils/responseHandler');
 
 // @desc    Get all notifications for current user
 // @route   GET /api/notifications

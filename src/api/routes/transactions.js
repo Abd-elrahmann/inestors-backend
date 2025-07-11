@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-// Import controllers
 const {
   getTransactions,
   getTransaction,
@@ -13,7 +12,7 @@ const {
   deleteTransactionAttachment
 } = require('../controllers/transactions');
 
-// Import middlewares
+// Auth middleware
 const { protect, authorize } = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 

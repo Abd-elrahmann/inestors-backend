@@ -1,6 +1,29 @@
-const Settings = require('../models/Settings');
-const ErrorResponse = require('../utils/errorResponse');
-const { success, error } = require('../utils/responseHandler');
+const ErrorResponse = require('../../utils/errorResponse');
+const { success, error } = require('../../utils/responseHandler');
+const Settings = require('../../models/Settings');
+const fetch = require('node-fetch');
+
+const FASTFOREX_API_KEY = '40574ca72f-e7a55a790e-sz74vn';
+const FASTFOREX_BASE_URL = 'https://api.fastforex.io';
+
+// Helper function to convert currency using FastForex API
+const convertWithFastForex = async (amount, fromCurrency, toCurrency) => {
+  try {
+    const response = await fetch(
+      `${FASTFOREX_BASE_URL}/convert?from=${fromCurrency}&to=${toCurrency}&amount=${amount}&api_key=${FASTFOREX_API_KEY}`
+    );
+    const data = await response.json();
+    
+    if (data.result) {
+      return data.result[toCurrency];
+    }
+    
+    throw new Error('Failed to convert currency');
+  } catch (error) {
+    console.error('Error converting with FastForex:', error);
+    throw error;
+  }
+};
 
 // @desc    Get system settings
 // @route   GET /api/settings
@@ -93,19 +116,75 @@ exports.convertCurrency = async (req, res, next) => {
       return error(res, 400, 'يرجى توفير المبلغ والعملتين');
     }
 
-    const settings = await Settings.findOne();
-    if (!settings) {
-      return error(res, 404, 'لم يتم العثور على إعدادات النظام');
-    }
+    try {
+      // محاولة التحويل باستخدام FastForex API
+      const convertedAmount = await convertWithFastForex(amount, fromCurrency, toCurrency);
+      
+      return success(res, 200, 'تم تحويل المبلغ بنجاح', {
+        originalAmount: amount,
+        fromCurrency,
+        toCurrency,
+        convertedAmount
+      });
+    } catch (fastforexError) {
+      console.error('FastForex conversion failed, falling back to local conversion:', fastforexError);
+      
+      // في حالة فشل FastForex، نستخدم التحويل المحلي
+      const settings = await Settings.findOne();
+      if (!settings) {
+        return error(res, 404, 'لم يتم العثور على إعدادات النظام');
+      }
 
-    const convertedAmount = settings.convertCurrency(amount, fromCurrency, toCurrency);
+      const convertedAmount = settings.convertCurrency(amount, fromCurrency, toCurrency);
+      
+      return success(res, 200, 'تم تحويل المبلغ بنجاح', {
+        originalAmount: amount,
+        fromCurrency,
+        toCurrency,
+        convertedAmount
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Get latest exchange rate from FastForex
+// @route   GET /api/settings/latest-exchange-rate
+// @access  Private
+exports.getLatestExchangeRate = async (req, res, next) => {
+  try {
+    const response = await fetch(
+      `${FASTFOREX_BASE_URL}/fetch-one?from=USD&to=IQD&api_key=${FASTFOREX_API_KEY}`
+    );
+    const data = await response.json();
     
-    return success(res, 200, 'تم تحويل المبلغ بنجاح', {
-      originalAmount: amount,
-      fromCurrency,
-      toCurrency,
-      convertedAmount
-    });
+    if (data.result && data.result.IQD) {
+      // تحديث سعر الصرف في قاعدة البيانات
+      const settings = await Settings.findOneAndUpdate(
+        {},
+        {
+          $set: {
+            'exchangeRates.USD_TO_IQD': data.result.IQD,
+            'exchangeRates.IQD_TO_USD': 1 / data.result.IQD,
+            lastRateUpdate: new Date(),
+            updatedBy: req.user.id
+          }
+        },
+        {
+          new: true,
+          runValidators: true,
+          upsert: true
+        }
+      );
+      
+      return success(res, 200, 'تم تحديث سعر الصرف بنجاح', {
+        rate: data.result.IQD,
+        settings
+      });
+    }
+    
+    return error(res, 500, 'فشل في الحصول على سعر الصرف الحالي');
   } catch (err) {
     next(err);
   }

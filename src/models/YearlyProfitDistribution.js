@@ -238,7 +238,8 @@ YearlyProfitDistributionSchema.methods.rolloverProfits = async function(percenta
     throw new Error('لا يمكن تدوير الأرباح إلا بعد الموافقة على التوزيع');
   }
   
-  const rolloverAmount = (this.calculation.calculatedProfit * percentage) / 100;
+  // تقريب مبلغ التدوير إلى 3 أرقام عشرية
+  const rolloverAmount = Number(((this.calculation.calculatedProfit * percentage) / 100).toFixed(3));
   
   // إنشاء معاملة إيداع جديدة للأرباح المدورة
   const Transaction = mongoose.model('Transaction');
@@ -250,7 +251,7 @@ YearlyProfitDistributionSchema.methods.rolloverProfits = async function(percenta
     type: 'profit',
     amount: rolloverAmount,
     currency: this.currency,
-    profitYear: financialYear?.year, // إضافة سنة الأرباح
+    profitYear: financialYear?.year,
     transactionDate: new Date(),
     reference: `تدوير أرباح السنة المالية ${financialYear?.year || 'غير محدد'}`,
     notes: `تدوير ${percentage}% من الأرباح (${new Intl.NumberFormat('ar-EG').format(this.calculation.calculatedProfit)} ${this.currency}) إلى رأس المال`,

@@ -1,4 +1,5 @@
 const express = require('express');
+
 const {
   getNotifications,
   getNotification,
@@ -11,9 +12,10 @@ const {
   broadcastNotification
 } = require('../controllers/notifications');
 
-const router = express.Router();
-
+// Load auth middleware
 const { protect, authorize } = require('../middlewares/auth');
+
+const router = express.Router();
 
 // All routes are protected
 router.use(protect);

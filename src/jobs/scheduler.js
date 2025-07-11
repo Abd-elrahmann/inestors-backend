@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const FinancialYear = require('../models/FinancialYear');
 const YearlyProfitDistribution = require('../models/YearlyProfitDistribution');
-const { cleanupOldExports } = require('./reportExporter');
+const { cleanupOldExports } = require('../services/reportExporter');
 
 // Daily task to check auto rollover (runs every day at 2:00 AM)
 const autoRolloverTask = cron.schedule('0 2 * * *', async () => {
@@ -141,7 +141,7 @@ const updateProfitsTask = cron.schedule('*/30 * * * *', async () => {
         console.log(`⚙️ معالجة السنة المالية ${year.year}...`);
         
         // استدعاء دالة حساب التوزيعات مباشرة
-        const FinancialYearController = require('../controllers/financialYears');
+        const FinancialYearController = require('../api/controllers/financialYears');
         
         // إنشاء mock request و response للدالة
         const mockReq = {

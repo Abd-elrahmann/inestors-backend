@@ -25,11 +25,11 @@ const SettingsSchema = new mongoose.Schema({
   exchangeRates: {
     USD_TO_IQD: {
       type: Number,
-      default: 1460
+      default: 1310.32
     },
     IQD_TO_USD: {
       type: Number,
-      default: 1/1460
+      default: 1/1310.32
     }
   },
   

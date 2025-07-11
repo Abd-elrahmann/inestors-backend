@@ -10,7 +10,10 @@ const {
   deleteInvestor,
   getInvestorBalance,
   getInvestorTransactions,
-  getInvestorProfits
+  getInvestorProfits,
+  uploadInvestorDocument,
+  getInvestorDocuments,
+  deleteInvestorDocument
 } = require('../controllers/investors');
 
 // Routes
@@ -36,5 +39,15 @@ router
 router
   .route('/:id/profits')
   .get(protect, getInvestorProfits);
+
+// Document routes
+router
+  .route('/:investorId/documents')
+  .get(protect, getInvestorDocuments)
+  .post(protect, authorize('admin'), uploadInvestorDocument);
+
+router
+  .route('/:investorId/documents/:documentId')
+  .delete(protect, authorize('admin'), deleteInvestorDocument);
 
 module.exports = router; 

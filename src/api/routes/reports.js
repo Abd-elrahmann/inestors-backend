@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-// Import controllers
 const {
   getInvestorListReport,
   getProfitDistributionReport,
@@ -13,7 +12,7 @@ const {
   cleanupExports
 } = require('../controllers/reports');
 
-// Import middlewares
+// Auth middleware
 const { protect, authorize } = require('../middlewares/auth');
 
 // Routes

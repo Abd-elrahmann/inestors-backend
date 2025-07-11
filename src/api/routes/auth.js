@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
 
-// Import controllers
 const {
   register,
   login,
   logout,
   getMe,
-  updatePassword,
-  updateDetails
+  updateDetails,
+  updatePassword
 } = require('../controllers/auth');
 
-// Import middlewares
+// Auth middleware
 const { protect, authorize } = require('../middlewares/auth');
 
 // Routes
