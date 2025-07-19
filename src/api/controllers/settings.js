@@ -3,22 +3,36 @@ const { success, error } = require('../../utils/responseHandler');
 const Settings = require('../../models/Settings');
 const fetch = require('node-fetch');
 
-const FASTFOREX_API_KEY = '40574ca72f-e7a55a790e-sz74vn';
+// استخدام مفتاح API من متغيرات البيئة
+const FASTFOREX_API_KEY = process.env.FASTFOREX_API_KEY;
 const FASTFOREX_BASE_URL = 'https://api.fastforex.io';
 
 // Helper function to convert currency using FastForex API
 const convertWithFastForex = async (amount, fromCurrency, toCurrency) => {
   try {
+    if (!FASTFOREX_API_KEY) {
+      throw new Error('FastForex API key is not configured');
+    }
+
     const response = await fetch(
-      `${FASTFOREX_BASE_URL}/convert?from=${fromCurrency}&to=${toCurrency}&amount=${amount}&api_key=${FASTFOREX_API_KEY}`
+      `${FASTFOREX_BASE_URL}/convert?from=${fromCurrency}&to=${toCurrency}&amount=${amount}&api_key=${FASTFOREX_API_KEY}`,
+      {
+        timeout: 5000 // 5 seconds timeout
+      }
     );
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `FastForex API error: ${response.status}`);
+    }
+
     const data = await response.json();
     
     if (data.result) {
       return data.result[toCurrency];
     }
     
-    throw new Error('Failed to convert currency');
+    throw new Error('Failed to convert currency: Invalid response format');
   } catch (error) {
     console.error('Error converting with FastForex:', error);
     throw error;
@@ -154,9 +168,27 @@ exports.convertCurrency = async (req, res, next) => {
 // @access  Private
 exports.getLatestExchangeRate = async (req, res, next) => {
   try {
+    if (!FASTFOREX_API_KEY) {
+      return error(res, 500, 'مفتاح API غير مكوّن. يرجى التواصل مع مسؤول النظام.');
+    }
+
     const response = await fetch(
-      `${FASTFOREX_BASE_URL}/fetch-one?from=USD&to=IQD&api_key=${FASTFOREX_API_KEY}`
+      `${FASTFOREX_BASE_URL}/fetch-one?from=USD&to=IQD&api_key=${FASTFOREX_API_KEY}`,
+      {
+        timeout: 5000 // 5 seconds timeout
+      }
     );
+
+    if (!response.ok) {
+      // التعامل مع أخطاء API المختلفة
+      if (response.status === 429) {
+        return error(res, 429, 'تم تجاوز حد الطلبات المسموح به');
+      } else if (response.status === 401) {
+        return error(res, 401, 'مفتاح API غير صالح');
+      }
+      throw new Error(`FastForex API error: ${response.status}`);
+    }
+    
     const data = await response.json();
     
     if (data.result && data.result.IQD) {
@@ -184,8 +216,12 @@ exports.getLatestExchangeRate = async (req, res, next) => {
       });
     }
     
-    return error(res, 500, 'فشل في الحصول على سعر الصرف الحالي');
+    return error(res, 500, 'فشل في الحصول على سعر الصرف الحالي: تنسيق البيانات غير صحيح');
   } catch (err) {
+    console.error('Error fetching exchange rate:', err);
+    if (err.name === 'AbortError' || err.type === 'request-timeout') {
+      return error(res, 504, 'انتهت مهلة الاتصال بخدمة سعر الصرف');
+    }
     next(err);
   }
 };
