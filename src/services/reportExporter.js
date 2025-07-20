@@ -3,98 +3,147 @@ const ExcelJS = require('exceljs');
 const fs = require('fs');
 const path = require('path');
 
-// تصدير تقرير توزيع الأرباح إلى PDF
-exports.exportProfitDistributionToPDF = async (financialYear, distributions) => {
+// Ensure exports directory exists
+const EXPORTS_DIR = path.join(__dirname, '../../exports');
+if (!fs.existsSync(EXPORTS_DIR)) {
+  fs.mkdirSync(EXPORTS_DIR, { recursive: true });
+}
+
+// Helper function to add Arabic text support
+const addArabicText = (doc, text, x, y, options = {}) => {
+  doc.text(text, x, y, {
+    align: options.align || 'right',
+    width: options.width || 200,
+    ...options
+  });
+};
+
+// Helper function to create table headers
+const createTableHeader = (doc, headers, startY, colWidths) => {
+  let currentX = 50;
+  
+  // Header background
+  doc.rect(50, startY, colWidths.reduce((sum, width) => sum + width, 0), 25)
+     .fillAndStroke('#28a745', '#28a745');
+  
+  // Header text
+  doc.fillColor('white')
+     .fontSize(10);
+  
+  headers.forEach((header, index) => {
+    doc.text(header, currentX + 5, startY + 8, {
+      width: colWidths[index] - 10,
+      align: 'center'
+    });
+    currentX += colWidths[index];
+  });
+  
+  doc.fillColor('black');
+  return startY + 25;
+};
+
+// Helper function to create table rows
+const createTableRow = (doc, row, startY, colWidths, isEven = false) => {
+  let currentX = 50;
+  
+  // Row background for alternating colors
+  if (isEven) {
+    doc.rect(50, startY, colWidths.reduce((sum, width) => sum + width, 0), 20)
+       .fillAndStroke('#f8f9fa', '#f8f9fa');
+  }
+  
+  doc.fillColor('black')
+     .fontSize(9);
+  
+  row.forEach((cell, index) => {
+    doc.text(cell.toString(), currentX + 5, startY + 6, {
+      width: colWidths[index] - 10,
+      align: 'center'
+    });
+    currentX += colWidths[index];
+  });
+  
+  return startY + 20;
+};
+
+/**
+ * Export profit distribution report to PDF
+ */
+const exportProfitDistributionToPDF = async (financialYear, distributions) => {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
       const fileName = `profit-distribution-${financialYear.year}-${Date.now()}.pdf`;
-      const filePath = path.join(__dirname, '../exports', fileName);
+      const filePath = path.join(EXPORTS_DIR, fileName);
       
-      // إنشاء مجلد التصدير إذا لم يكن موجوداً
-      const exportDir = path.dirname(filePath);
-      if (!fs.existsSync(exportDir)) {
-        fs.mkdirSync(exportDir, { recursive: true });
-      }
-      
+      // Create write stream
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
       
-      // إعداد الخط العربي (إذا كان متوفراً)
-      // doc.font('path/to/arabic-font.ttf'); // يمكن إضافة خط عربي هنا
+      // Title
+      doc.fontSize(18)
+         .text(`تقرير توزيع الأرباح - السنة المالية ${financialYear.year}`, 50, 50, {
+           align: 'center',
+           width: 500
+         });
       
-      // عنوان التقرير
-      doc.fontSize(20).text(`تقرير توزيع الأرباح - السنة المالية ${financialYear.year}`, { align: 'center' });
-      doc.moveDown();
-      
-      // معلومات السنة المالية
-      doc.fontSize(14).text(`إجمالي الربح: ${financialYear.totalProfit} ${financialYear.currency}`);
-      doc.text(`معدل الربح اليومي: ${financialYear.dailyProfitRate.toFixed(6)}`);
-      doc.text(`عدد المساهمين: ${distributions.length}`);
-      doc.text(`تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA')}`);
-      doc.moveDown();
-      
-      // جدول التوزيعات
-      doc.fontSize(16).text('تفاصيل التوزيعات:', { underline: true });
-      doc.moveDown();
-      
-      let yPosition = doc.y;
-      const tableTop = yPosition;
-      const itemHeight = 25;
-      
-      // رؤوس الجدول
+      // Financial year info
+      let currentY = 100;
       doc.fontSize(12);
-      doc.text('المساهم', 50, yPosition);
-      doc.text('المبلغ المستثمر', 200, yPosition);
-      doc.text('عدد الأيام', 320, yPosition);
-      doc.text('الأرباح', 420, yPosition);
-      doc.text('العملة', 500, yPosition);
       
-      yPosition += itemHeight;
+      addArabicText(doc, `السنة المالية: ${financialYear.year}`, 50, currentY);
+      currentY += 20;
+      addArabicText(doc, `تاريخ البداية: ${new Date(financialYear.startDate).toLocaleDateString('ar-SA')}`, 50, currentY);
+      currentY += 20;
+      addArabicText(doc, `تاريخ النهاية: ${new Date(financialYear.endDate).toLocaleDateString('ar-SA')}`, 50, currentY);
+      currentY += 20;
+      addArabicText(doc, `إجمالي الربح: ${financialYear.totalProfit.toLocaleString()} ${financialYear.currency}`, 50, currentY);
+      currentY += 20;
+      addArabicText(doc, `معدل الربح اليومي: ${financialYear.dailyProfitRate?.toFixed(6)}`, 50, currentY);
+      currentY += 40;
       
-      // خط فاصل
-      doc.moveTo(50, yPosition - 5)
-         .lineTo(550, yPosition - 5)
-         .stroke();
+      // Table
+      const headers = ['المساهم', 'الرقم الوطني', 'مبلغ الاستثمار', 'عدد الأيام', 'الربح المحسوب', 'الحالة'];
+      const colWidths = [100, 80, 90, 60, 90, 80];
       
-      // بيانات التوزيعات
-      let totalDistributed = 0;
-      distributions.forEach((distribution, index) => {
-        if (yPosition > 700) { // صفحة جديدة
+      currentY = createTableHeader(doc, headers, currentY, colWidths);
+      
+      distributions.forEach((dist, index) => {
+        const row = [
+          dist.investorId.fullName,
+          dist.investorId.nationalId,
+          `${dist.calculation.investmentAmount.toLocaleString()} ${dist.currency}`,
+          dist.calculation.totalDays.toString(),
+          `${dist.calculation.calculatedProfit.toLocaleString()} ${dist.currency}`,
+          dist.status === 'calculated' ? 'محسوب' : 
+          dist.status === 'approved' ? 'موافق عليه' : 
+          dist.status === 'distributed' ? 'موزع' : dist.status
+        ];
+        
+        currentY = createTableRow(doc, row, currentY, colWidths, index % 2 === 0);
+        
+        // Add new page if needed
+        if (currentY > 700) {
           doc.addPage();
-          yPosition = 50;
+          currentY = 50;
+          currentY = createTableHeader(doc, headers, currentY, colWidths);
         }
-        
-        doc.text(distribution.investorId.fullName || 'غير محدد', 50, yPosition);
-        doc.text(distribution.calculation.investmentAmount.toFixed(2), 200, yPosition);
-        doc.text(distribution.calculation.totalDays.toString(), 320, yPosition);
-        doc.text(distribution.calculation.calculatedProfit.toFixed(2), 420, yPosition);
-        doc.text(distribution.currency, 500, yPosition);
-        
-        totalDistributed += distribution.calculation.calculatedProfit;
-        yPosition += itemHeight;
       });
       
-      // خط فاصل نهائي
-      doc.moveTo(50, yPosition)
-         .lineTo(550, yPosition)
-         .stroke();
+      // Footer
+      doc.fontSize(10)
+         .text(`تم إنشاء التقرير في: ${new Date().toLocaleString('ar-SA')}`, 50, doc.page.height - 50, {
+           align: 'center',
+           width: 500
+         });
       
-      yPosition += 10;
-      
-      // الإجماليات
-      doc.fontSize(14).text(`إجمالي الأرباح الموزعة: ${totalDistributed.toFixed(2)} ${financialYear.currency}`, 50, yPosition);
-      
-      // إنهاء المستند
       doc.end();
       
       stream.on('finish', () => {
         resolve({ fileName, filePath });
       });
       
-      stream.on('error', (error) => {
-        reject(error);
-      });
+      stream.on('error', reject);
       
     } catch (error) {
       reject(error);
@@ -102,97 +151,74 @@ exports.exportProfitDistributionToPDF = async (financialYear, distributions) => 
   });
 };
 
-// تصدير تقرير توزيع الأرباح إلى Excel
-exports.exportProfitDistributionToExcel = async (financialYear, distributions) => {
+/**
+ * Export profit distribution report to Excel
+ */
+const exportProfitDistributionToExcel = async (financialYear, distributions) => {
   try {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet(`أرباح ${financialYear.year}`);
+    const worksheet = workbook.addWorksheet(`السنة المالية ${financialYear.year}`);
     
-    // إعداد الأعمدة
-    worksheet.columns = [
-      { header: 'المساهم', key: 'investorName', width: 25 },
-      { header: 'الرقم الوطني', key: 'nationalId', width: 20 },
-      { header: 'المبلغ المستثمر', key: 'investmentAmount', width: 18 },
-      { header: 'عدد الأيام', key: 'totalDays', width: 12 },
-      { header: 'معدل الربح اليومي', key: 'dailyRate', width: 18 },
-      { header: 'الأرباح المحسوبة', key: 'calculatedProfit', width: 18 },
-      { header: 'العملة', key: 'currency', width: 10 },
-      { header: 'الحالة', key: 'status', width: 15 }
-    ];
+    // Title
+    worksheet.mergeCells('A1:F1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = `تقرير توزيع الأرباح - السنة المالية ${financialYear.year}`;
+    titleCell.font = { size: 16, bold: true };
+    titleCell.alignment = { horizontal: 'center' };
     
-    // تنسيق رأس الجدول
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).alignment = { horizontal: 'center' };
-    worksheet.getRow(1).fill = {
+    // Financial year info
+    worksheet.getCell('A3').value = 'معلومات السنة المالية:';
+    worksheet.getCell('A3').font = { bold: true };
+    
+    worksheet.getCell('A4').value = `السنة المالية: ${financialYear.year}`;
+    worksheet.getCell('A5').value = `تاريخ البداية: ${new Date(financialYear.startDate).toLocaleDateString('ar-SA')}`;
+    worksheet.getCell('A6').value = `تاريخ النهاية: ${new Date(financialYear.endDate).toLocaleDateString('ar-SA')}`;
+    worksheet.getCell('A7').value = `إجمالي الربح: ${financialYear.totalProfit.toLocaleString()} ${financialYear.currency}`;
+    worksheet.getCell('A8').value = `معدل الربح اليومي: ${financialYear.dailyProfitRate?.toFixed(6)}`;
+    
+    // Table headers
+    const headerRow = worksheet.getRow(10);
+    headerRow.values = ['المساهم', 'الرقم الوطني', 'مبلغ الاستثمار', 'عدد الأيام', 'الربح المحسوب', 'الحالة'];
+    headerRow.font = { bold: true };
+    headerRow.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFE0E0E0' }
+      fgColor: { argb: 'FF28a745' }
     };
+    headerRow.font = { color: { argb: 'FFFFFFFF' }, bold: true };
     
-    // إضافة البيانات
-    let totalDistributed = 0;
-    distributions.forEach(distribution => {
-      worksheet.addRow({
-        investorName: distribution.investorId.fullName || 'غير محدد',
-        nationalId: distribution.investorId.nationalId || 'غير محدد',
-        investmentAmount: distribution.calculation.investmentAmount,
-        totalDays: distribution.calculation.totalDays,
-        dailyRate: distribution.calculation.dailyProfitRate,
-        calculatedProfit: distribution.calculation.calculatedProfit,
-        currency: distribution.currency,
-        status: distribution.status === 'calculated' ? 'محسوب' : 
-                distribution.status === 'approved' ? 'موافق عليه' :
-                distribution.status === 'distributed' ? 'موزع' : 'مدور'
-      });
+    // Data rows
+    distributions.forEach((dist, index) => {
+      const row = worksheet.getRow(11 + index);
+      row.values = [
+        dist.investorId.fullName,
+        dist.investorId.nationalId,
+        `${dist.calculation.investmentAmount.toLocaleString()} ${dist.currency}`,
+        dist.calculation.totalDays,
+        `${dist.calculation.calculatedProfit.toLocaleString()} ${dist.currency}`,
+        dist.status === 'calculated' ? 'محسوب' : 
+        dist.status === 'approved' ? 'موافق عليه' : 
+        dist.status === 'distributed' ? 'موزع' : dist.status
+      ];
       
-      totalDistributed += distribution.calculation.calculatedProfit;
+      // Alternate row colors
+      if (index % 2 === 0) {
+        row.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8F9FA' }
+        };
+      }
     });
     
-    // إضافة صف الإجماليات
-    const totalRow = worksheet.addRow({
-      investorName: 'الإجمالي',
-      investmentAmount: '',
-      totalDays: '',
-      dailyRate: '',
-      calculatedProfit: totalDistributed,
-      currency: financialYear.currency,
-      status: ''
+    // Auto-fit columns
+    worksheet.columns.forEach(column => {
+      column.width = 20;
     });
     
-    totalRow.font = { bold: true };
-    totalRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFCC00' }
-    };
-    
-    // إضافة ورقة معلومات السنة المالية
-    const infoSheet = workbook.addWorksheet('معلومات السنة المالية');
-    infoSheet.addRow(['السنة المالية', financialYear.year]);
-    infoSheet.addRow(['إجمالي الربح', financialYear.totalProfit]);
-    infoSheet.addRow(['العملة', financialYear.currency]);
-    infoSheet.addRow(['تاريخ البداية', financialYear.startDate.toLocaleDateString('ar-SA')]);
-    infoSheet.addRow(['تاريخ النهاية', financialYear.endDate.toLocaleDateString('ar-SA')]);
-    infoSheet.addRow(['عدد الأيام', financialYear.totalDays]);
-    infoSheet.addRow(['معدل الربح اليومي', financialYear.dailyProfitRate]);
-    infoSheet.addRow(['عدد المساهمين', distributions.length]);
-    infoSheet.addRow(['إجمالي الأرباح الموزعة', totalDistributed]);
-    infoSheet.addRow(['تاريخ التقرير', new Date().toLocaleDateString('ar-SA')]);
-    
-    // تنسيق ورقة المعلومات
-    infoSheet.getColumn(1).width = 25;
-    infoSheet.getColumn(2).width = 20;
-    infoSheet.getColumn(1).font = { bold: true };
-    
-    // حفظ الملف
+    // Save file
     const fileName = `profit-distribution-${financialYear.year}-${Date.now()}.xlsx`;
-    const filePath = path.join(__dirname, '../exports', fileName);
-    
-    // إنشاء مجلد التصدير إذا لم يكن موجوداً
-    const exportDir = path.dirname(filePath);
-    if (!fs.existsSync(exportDir)) {
-      fs.mkdirSync(exportDir, { recursive: true });
-    }
+    const filePath = path.join(EXPORTS_DIR, fileName);
     
     await workbook.xlsx.writeFile(filePath);
     
@@ -203,77 +229,150 @@ exports.exportProfitDistributionToExcel = async (financialYear, distributions) =
   }
 };
 
-// تصدير تقرير المساهم إلى PDF
-exports.exportInvestorReportToPDF = async (investor, transactions, profitDistributions, summary) => {
+/**
+ * Export investor report to PDF
+ */
+const exportInvestorReportToPDF = async (investor, transactions, profitDistributions, summary) => {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
-      const fileName = `investor-report-${investor.nationalId}-${Date.now()}.pdf`;
-      const filePath = path.join(__dirname, '../exports', fileName);
+      const fileName = `investor-report-${investor.fullName.replace(/\s+/g, '-')}-${Date.now()}.pdf`;
+      const filePath = path.join(EXPORTS_DIR, fileName);
       
-      // إنشاء مجلد التصدير إذا لم يكن موجوداً
-      const exportDir = path.dirname(filePath);
-      if (!fs.existsSync(exportDir)) {
-        fs.mkdirSync(exportDir, { recursive: true });
-      }
-      
+      // Create write stream
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
       
-      // عنوان التقرير
-      doc.fontSize(20).text(`تقرير المساهم - ${investor.fullName}`, { align: 'center' });
-      doc.moveDown();
+      // Title
+      doc.fontSize(18)
+         .text(`تقرير المساهم الفردي`, 50, 50, {
+           align: 'center',
+           width: 500
+         });
       
-      // معلومات المساهم
-      doc.fontSize(14).text(`الرقم الوطني: ${investor.nationalId}`);
-      doc.text(`المساهمة الأولية: ${investor.amountContributed}`);
-      doc.text(`تاريخ بداية المساهمة: ${investor.startDate.toLocaleDateString('ar-SA')}`);
-      doc.text(`الحالة: ${investor.isActive ? 'نشط' : 'غير نشط'}`);
-      doc.moveDown();
+      doc.fontSize(16)
+         .text(investor.fullName, 50, 80, {
+           align: 'center',
+           width: 500
+         });
       
-      // ملخص الحساب
-      doc.fontSize(16).text('ملخص الحساب:', { underline: true });
-      doc.fontSize(14).text(`إجمالي الإيداعات: ${summary.totalDeposits}`);
-      doc.text(`إجمالي السحوبات: ${summary.totalWithdrawals}`);
-      doc.text(`إجمالي الأرباح: ${summary.totalProfits}`);
-      doc.text(`الرصيد الحالي: ${summary.currentBalance}`);
-      doc.moveDown();
+      // Investor info
+      let currentY = 120;
+      doc.fontSize(14)
+         .text('معلومات المساهم:', 50, currentY);
       
-      // المعاملات
-      if (transactions.length > 0) {
-        doc.fontSize(16).text('المعاملات:', { underline: true });
-        doc.moveDown();
+      currentY += 25;
+      doc.fontSize(11);
+      
+      addArabicText(doc, `الاسم: ${investor.fullName}`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `الرقم الوطني: ${investor.nationalId}`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `مبلغ المساهمة: ${investor.amountContributed.toLocaleString()} IQD`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `نسبة المساهمة: ${investor.sharePercentage}%`, 70, currentY);
+      currentY += 30;
+      
+      // Summary
+      doc.fontSize(14)
+         .text('ملخص الحساب:', 50, currentY);
+      
+      currentY += 25;
+      doc.fontSize(11);
+      
+      addArabicText(doc, `الفترة: ${summary.year}`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `إجمالي الإيداعات: ${summary.totalDeposits.toLocaleString()} IQD`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `إجمالي السحوبات: ${summary.totalWithdrawals.toLocaleString()} IQD`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `إجمالي الأرباح: ${summary.totalProfits.toLocaleString()} IQD`, 70, currentY);
+      currentY += 20;
+      addArabicText(doc, `الرصيد الحالي: ${summary.currentBalance.toLocaleString()} IQD`, 70, currentY);
+      currentY += 40;
+      
+      // Profit distributions table
+      if (profitDistributions.length > 0) {
+        doc.fontSize(14)
+           .text('توزيعات الأرباح:', 50, currentY);
         
-        let yPosition = doc.y;
+        currentY += 25;
         
-        // رؤوس جدول المعاملات
-        doc.fontSize(12);
-        doc.text('التاريخ', 50, yPosition);
-        doc.text('النوع', 150, yPosition);
-        doc.text('المبلغ', 250, yPosition);
-        doc.text('المرجع', 350, yPosition);
+        const headers = ['السنة المالية', 'مبلغ الاستثمار', 'عدد الأيام', 'الربح المحسوب', 'الحالة'];
+        const colWidths = [100, 100, 80, 100, 120];
         
-        yPosition += 25;
-        doc.moveTo(50, yPosition - 5).lineTo(550, yPosition - 5).stroke();
+        currentY = createTableHeader(doc, headers, currentY, colWidths);
         
-        transactions.slice(0, 10).forEach(transaction => { // أول 10 معاملات
-          if (yPosition > 700) {
+        profitDistributions.forEach((dist, index) => {
+          const row = [
+            dist.financialYearId?.year?.toString() || 'N/A',
+            `${dist.calculation.investmentAmount.toLocaleString()} ${dist.currency}`,
+            dist.calculation.totalDays.toString(),
+            `${dist.calculation.calculatedProfit.toLocaleString()} ${dist.currency}`,
+            dist.status === 'calculated' ? 'محسوب' : 
+            dist.status === 'approved' ? 'موافق عليه' : 
+            dist.status === 'distributed' ? 'موزع' : dist.status
+          ];
+          
+          currentY = createTableRow(doc, row, currentY, colWidths, index % 2 === 0);
+          
+          // Add new page if needed
+          if (currentY > 700) {
             doc.addPage();
-            yPosition = 50;
+            currentY = 50;
+            currentY = createTableHeader(doc, headers, currentY, colWidths);
           }
-          
-          doc.text(transaction.transactionDate.toLocaleDateString('ar-SA'), 50, yPosition);
-          doc.text(transaction.type, 150, yPosition);
-          doc.text(transaction.amount.toString(), 250, yPosition);
-          doc.text(transaction.reference || '', 350, yPosition);
-          
-          yPosition += 20;
         });
         
-        if (transactions.length > 10) {
-          doc.text(`... و ${transactions.length - 10} معاملة أخرى`, 50, yPosition);
-        }
+        currentY += 30;
       }
+      
+      // Transactions table
+      if (transactions.length > 0) {
+        // Add new page if needed
+        if (currentY > 600) {
+          doc.addPage();
+          currentY = 50;
+        }
+        
+        doc.fontSize(14)
+           .text('المعاملات المالية:', 50, currentY);
+        
+        currentY += 25;
+        
+        const headers = ['التاريخ', 'النوع', 'المبلغ', 'المرجع', 'الملاحظات'];
+        const colWidths = [80, 80, 100, 100, 140];
+        
+        currentY = createTableHeader(doc, headers, currentY, colWidths);
+        
+        transactions.slice(0, 20).forEach((transaction, index) => { // Limit to first 20 transactions
+          const row = [
+            new Date(transaction.transactionDate).toLocaleDateString('ar-SA'),
+            transaction.type === 'deposit' ? 'إيداع' : 
+            transaction.type === 'withdrawal' ? 'سحب' : 
+            transaction.type === 'profit' ? 'أرباح' : transaction.type,
+            `${transaction.amount.toLocaleString()} IQD`,
+            transaction.reference || '-',
+            transaction.notes || '-'
+          ];
+          
+          currentY = createTableRow(doc, row, currentY, colWidths, index % 2 === 0);
+          
+          // Add new page if needed
+          if (currentY > 700) {
+            doc.addPage();
+            currentY = 50;
+            currentY = createTableHeader(doc, headers, currentY, colWidths);
+          }
+        });
+      }
+      
+      // Footer
+      doc.fontSize(10)
+         .text(`تم إنشاء التقرير في: ${new Date().toLocaleString('ar-SA')}`, 50, doc.page.height - 50, {
+           align: 'center',
+           width: 500
+         });
       
       doc.end();
       
@@ -281,9 +380,7 @@ exports.exportInvestorReportToPDF = async (investor, transactions, profitDistrib
         resolve({ fileName, filePath });
       });
       
-      stream.on('error', (error) => {
-        reject(error);
-      });
+      stream.on('error', reject);
       
     } catch (error) {
       reject(error);
@@ -291,18 +388,17 @@ exports.exportInvestorReportToPDF = async (investor, transactions, profitDistrib
   });
 };
 
-// تنظيف الملفات القديمة
-exports.cleanupOldExports = () => {
+/**
+ * Clean up old export files (older than 24 hours)
+ */
+const cleanupOldExports = () => {
   try {
-    const exportDir = path.join(__dirname, '../exports');
-    if (!fs.existsSync(exportDir)) return;
-    
-    const files = fs.readdirSync(exportDir);
+    const files = fs.readdirSync(EXPORTS_DIR);
     const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 ساعة
+    const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     
     files.forEach(file => {
-      const filePath = path.join(exportDir, file);
+      const filePath = path.join(EXPORTS_DIR, file);
       const stats = fs.statSync(filePath);
       
       if (now - stats.mtime.getTime() > maxAge) {
@@ -313,4 +409,11 @@ exports.cleanupOldExports = () => {
   } catch (error) {
     console.error('خطأ في تنظيف الملفات القديمة:', error);
   }
+};
+
+module.exports = {
+  exportProfitDistributionToPDF,
+  exportProfitDistributionToExcel,
+  exportInvestorReportToPDF,
+  cleanupOldExports
 }; 
