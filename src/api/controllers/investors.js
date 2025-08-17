@@ -13,22 +13,17 @@ exports.getInvestors = async (req, res, next) => {
   try {
     const { page = 1, limit = 50, sort = 'fullName', isActive, search, includeInactive } = req.query;
     
-    // تحسين الأداء: تحديد الحد الأقصى للـ limit
     const maxLimit = Math.min(parseInt(limit), 100);
     
     // Build query
     const query = {};
     
-    // Filter by active status if provided
     if (isActive !== undefined) {
       query.isActive = isActive === 'true';
     } else if (includeInactive !== 'true') {
-      // إذا لم يطلب صراحة includeInactive، أظهر النشطين فقط افتراضياً
       query.isActive = true;
     }
-    // إذا كان includeInactive=true، لن نضيف فلتر isActive (سيظهر الكل)
     
-    // Search by name or national ID
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
@@ -36,23 +31,31 @@ exports.getInvestors = async (req, res, next) => {
       ];
     }
     
-    // Count total documents (مع cache للعدد)
     const total = await Investor.countDocuments(query);
-    
-    // Get pagination info
     const { startIndex, pagination } = getPaginationInfo(page, maxLimit, total);
     
-    // تحسين الأداء: جلب الحقول المطلوبة فقط
     const selectFields = 'fullName nationalId amountContributed currency sharePercentage startDate phone isActive createdAt';
     
-    // Get investors with optimized query
-    const investors = await Investor.find(query)
+    let investors = await Investor.find(query)
       .select(selectFields)
       .sort({ [sort]: 1 })
       .skip(startIndex)
       .limit(pagination.limit)
-      .lean(); // استخدام lean() لتحسين الأداء
-    
+      .lean();
+
+    // Calculate share percentages if missing
+    if (investors.some(inv => !inv.sharePercentage)) {
+      const activeInvestors = await Investor.find({ isActive: true });
+      const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
+      
+      investors = investors.map(inv => {
+        if (!inv.sharePercentage && inv.isActive) {
+          inv.sharePercentage = (inv.amountContributed / totalInvestment) * 100;
+        }
+        return inv;
+      });
+    }
+
     return success(res, 200, 'Investors retrieved successfully', { investors }, pagination);
   } catch (err) {
     next(err);
@@ -70,6 +73,14 @@ exports.getInvestor = async (req, res, next) => {
       return error(res, 404, `Investor not found with id of ${req.params.id}`);
     }
     
+    // Ensure share percentage exists
+    if (!investor.sharePercentage && investor.isActive) {
+      const activeInvestors = await Investor.find({ isActive: true });
+      const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
+      investor.sharePercentage = (investor.amountContributed / totalInvestment) * 100;
+      await investor.save();
+    }
+    
     return success(res, 200, 'Investor retrieved successfully', { investor });
   } catch (err) {
     next(err);
@@ -81,9 +92,31 @@ exports.getInvestor = async (req, res, next) => {
 // @access  Private/Admin
 exports.createInvestor = async (req, res, next) => {
   try {
+    // Create investor
     const investor = await Investor.create(req.body);
     
-    return success(res, 201, 'Investor created successfully', { investor });
+    // Calculate and update share percentage immediately
+    const activeInvestors = await Investor.find({ isActive: true });
+    const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
+    const sharePercentage = (investor.amountContributed / totalInvestment) * 100;
+    
+    // Update the investor with calculated percentage
+    const updatedInvestor = await Investor.findByIdAndUpdate(
+      investor._id,
+      { sharePercentage: sharePercentage },
+      { new: true }
+    );
+    
+    // Update all investors' percentages in background
+    setImmediate(async () => {
+      try {
+        await Investor.updateAllSharePercentages();
+      } catch (err) {
+        console.error('Error updating all share percentages:', err);
+      }
+    });
+    
+    return success(res, 201, 'Investor created successfully', { investor: updatedInvestor });
   } catch (err) {
     next(err);
   }
@@ -104,6 +137,17 @@ exports.updateInvestor = async (req, res, next) => {
       new: true,
       runValidators: true
     });
+    
+    // Update all share percentages if contribution amount changed
+    if (req.body.amountContributed) {
+      setImmediate(async () => {
+        try {
+          await Investor.updateAllSharePercentages();
+        } catch (err) {
+          console.error('Error updating share percentages:', err);
+        }
+      });
+    }
     
     return success(res, 200, 'Investor updated successfully', { investor });
   } catch (err) {

@@ -28,7 +28,8 @@ const InvestorSchema = new mongoose.Schema({
   sharePercentage: {
     type: Number,
     min: [0, 'Percentage cannot be negative'],
-    max: [100, 'Percentage cannot exceed 100']
+    max: [100, 'Percentage cannot exceed 100'],
+    default: 0
   },
   startDate: {
     type: Date,
@@ -74,14 +75,6 @@ const InvestorSchema = new mongoose.Schema({
   }],
   notes: {
     type: String
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
   timestamps: true,
@@ -94,9 +87,9 @@ InvestorSchema.index({ nationalId: 1 }, { unique: true });
 InvestorSchema.index({ isActive: 1 });
 InvestorSchema.index({ fullName: 1 });
 InvestorSchema.index({ startDate: 1 });
-InvestorSchema.index({ fullName: 'text', nationalId: 'text' }); // للبحث النصي
+InvestorSchema.index({ fullName: 'text', nationalId: 'text' });
 
-// Virtual for getting all transactions for this investor
+// Virtual for transactions
 InvestorSchema.virtual('transactions', {
   ref: 'Transaction',
   localField: '_id',
@@ -104,7 +97,7 @@ InvestorSchema.virtual('transactions', {
   justOne: false
 });
 
-// Virtual for getting all profit distributions for this investor
+// Virtual for profit distributions
 InvestorSchema.virtual('profitDistributions', {
   ref: 'ProfitDistribution',
   localField: '_id',
@@ -114,93 +107,93 @@ InvestorSchema.virtual('profitDistributions', {
 
 // Calculate current balance
 InvestorSchema.methods.getCurrentBalance = async function() {
-  // Get all transactions
-  await this.populate('transactions');
+  await this.populate('transactions profitDistributions');
   
   let balance = this.amountContributed;
   
-  // Add deposits and subtract withdrawals
   if (this.transactions) {
-    this.transactions.forEach(transaction => {
-      if (transaction.type === 'deposit') {
-        balance += transaction.amount;
-      } else if (transaction.type === 'withdrawal') {
-        balance -= transaction.amount;
-      }
+    this.transactions.forEach(t => {
+      balance += t.type === 'deposit' ? t.amount : -t.amount;
     });
   }
   
-  // Add profit distributions
-  await this.populate('profitDistributions');
   if (this.profitDistributions) {
-    this.profitDistributions.forEach(distribution => {
-      balance += distribution.profitAmount;
-    });
+    balance += this.profitDistributions.reduce((sum, d) => sum + d.profitAmount, 0);
   }
   
   return balance;
 };
 
-// Update share percentage
+// Update single investor's share percentage
 InvestorSchema.methods.updateSharePercentage = async function() {
-  // Get total contributions from all active investors
-  const totalContributions = await mongoose.model('Investor').aggregate([
+  const total = await this.constructor.aggregate([
     { $match: { isActive: true } },
     { $group: { _id: null, total: { $sum: '$amountContributed' } } }
   ]);
   
-  if (totalContributions && totalContributions.length > 0) {
-    this.sharePercentage = (this.amountContributed / totalContributions[0].total) * 100;
+  if (total.length > 0 && total[0].total > 0) {
+    this.sharePercentage = parseFloat(
+      ((this.amountContributed / total[0].total) * 100).toFixed(2)
+    );
     await this.save();
   }
   
   return this.sharePercentage;
 };
 
-// دالة تحديث نسب المساهمة لجميع المساهمين النشطين
+// Update all active investors' share percentages
 InvestorSchema.statics.updateAllSharePercentages = async function() {
-  try {
-    // الحصول على جميع المساهمين النشطين
-    const activeInvestors = await this.find({ isActive: true }).select('amountContributed sharePercentage');
-    
-    if (activeInvestors.length === 0) {
-      return true;
-    }
-    
-    // حساب إجمالي المبلغ المستثمر للمساهمين النشطين
-    const totalInvestment = activeInvestors.reduce((sum, investor) => sum + investor.amountContributed, 0);
+  // Get total contributions from active investors
+  const totalResult = await this.aggregate([
+    { $match: { isActive: true } },
+    { $group: { _id: null, total: { $sum: '$amountContributed' } } }
+  ]);
   
-    if (totalInvestment === 0) {
-      return true;
-    }
-    
-    // تحديث نسبة كل مساهم باستخدام bulk operation
-    const bulkOps = activeInvestors.map(investor => ({
-      updateOne: {
-        filter: { _id: investor._id },
-        update: { 
-          sharePercentage: (investor.amountContributed / totalInvestment) * 100,
-          updatedAt: new Date()
-        }
-      }
-    }));
-    
-    await this.bulkWrite(bulkOps);
-    
-    return true;
-  } catch (error) {
-    console.error('Error updating share percentages:', error);
-    throw error;
+  if (totalResult.length === 0 || totalResult[0].total === 0) {
+    return false;
   }
+  
+  const totalInvestment = totalResult[0].total;
+  
+  // Update all active investors in bulk
+  const result = await this.updateMany(
+    { isActive: true },
+    [{
+      $set: {
+        sharePercentage: {
+          $round: [
+            { $multiply: [
+              { $divide: ['$amountContributed', totalInvestment] },
+              100
+            ]},
+            2
+          ]
+        },
+        updatedAt: new Date()
+      }
+    }]
+  );
+  
+  return result.modifiedCount > 0;
 };
 
-// Pre-save hook to update timestamps
-InvestorSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
+// Pre-save hook to update share percentage when amount changes
+InvestorSchema.pre('save', async function(next) {
+  if (this.isModified('amountContributed') || this.isModified('isActive')) {
+    const totalResult = await this.constructor.aggregate([
+      { $match: { isActive: true } },
+      { $group: { _id: null, total: { $sum: '$amountContributed' } } }
+    ]);
+    
+    if (totalResult.length > 0 && totalResult[0].total > 0 && this.isActive) {
+      this.sharePercentage = parseFloat(
+        ((this.amountContributed / totalResult[0].total) * 100).toFixed(2)
+      );
+    } else {
+      this.sharePercentage = 0;
+    }
+  }
   next();
 });
 
-// إزالة الـ hooks المعقدة وتبسيط العمليات
-// سيتم تحديث النسب يدوياً عند الحاجة لتحسين الأداء
-
-module.exports = mongoose.model('Investor', InvestorSchema); 
+module.exports = mongoose.model('Investor', InvestorSchema);
