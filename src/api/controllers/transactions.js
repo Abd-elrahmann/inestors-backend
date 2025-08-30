@@ -6,8 +6,9 @@ const fs = require('fs');
 const path = require('path');
 
 // @desc    Get all transactions
-// @route   GET /api/transactions
+// @route   GET /api/transactions?page=:page&limit=:limit&sort=:sort&type=:type&startDate=:startDate&endDate=:endDate&investorId=:investorId
 // @access  Private/Admin
+
 exports.getTransactions = async (req, res, next) => {
   try {
     const { 
@@ -18,7 +19,7 @@ exports.getTransactions = async (req, res, next) => {
       startDate, 
       endDate,
       investorId
-    } = req.query;
+    } = req.params;
     
     // Build query
     const query = {};

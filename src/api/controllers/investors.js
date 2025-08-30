@@ -11,56 +11,64 @@ const path = require('path');
 // @access  Private
 exports.getInvestors = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, sort = 'fullName', isActive, search, includeInactive } = req.query;
-    
+    const { page = 1, limit = 50, sort = 'fullName', search } = req.query;
+
     const maxLimit = Math.min(parseInt(limit), 100);
-    
+
     // Build query
-    const query = {};
-    
-    if (isActive !== undefined) {
-      query.isActive = isActive === 'true';
-    } else if (includeInactive !== 'true') {
-      query.isActive = true;
+    let query = {};
+
+    if (search && search.trim() !== "") {
+      query = {
+        $or: [
+          { fullName: { $regex: search, $options: 'i' } },
+          { nationalId: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } }
+        ]
+      };
     }
-    
-    if (search) {
-      query.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { nationalId: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
+
     const total = await Investor.countDocuments(query);
     const { startIndex, pagination } = getPaginationInfo(page, maxLimit, total);
-    
-    const selectFields = 'fullName nationalId amountContributed currency sharePercentage startDate phone isActive createdAt';
-    
-    let investors = await Investor.find(query)
+
+    const selectFields =
+      'fullName nationalId amountContributed currency sharePercentage startDate phone createdAt';
+
+    let investors = await Investor.find(query)    
       .select(selectFields)
       .sort({ [sort]: 1 })
       .skip(startIndex)
       .limit(pagination.limit)
       .lean();
 
-    // Calculate share percentages if missing
     if (investors.some(inv => !inv.sharePercentage)) {
-      const activeInvestors = await Investor.find({ isActive: true });
-      const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
-      
+      const allInvestors = await Investor.find();
+      const totalInvestment = allInvestors.reduce(
+        (sum, inv) => sum + inv.amountContributed,
+        0
+      );
+
       investors = investors.map(inv => {
-        if (!inv.sharePercentage && inv.isActive) {
+        if (!inv.sharePercentage) {
           inv.sharePercentage = (inv.amountContributed / totalInvestment) * 100;
         }
         return inv;
       });
     }
 
-    return success(res, 200, 'Investors retrieved successfully', { investors }, pagination);
+    return success(
+      res,
+      200,
+      'Investors retrieved successfully',
+      { investors },
+      pagination
+    );
   } catch (err) {
+    console.error("Error in getInvestors:", err);
     next(err);
   }
 };
+
 
 // @desc    Get single investor
 // @route   GET /api/investors/:id
@@ -74,9 +82,9 @@ exports.getInvestor = async (req, res, next) => {
     }
     
     // Ensure share percentage exists
-    if (!investor.sharePercentage && investor.isActive) {
-      const activeInvestors = await Investor.find({ isActive: true });
-      const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
+    if (!investor.sharePercentage) {
+      const allInvestors = await Investor.find();
+      const totalInvestment = allInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
       investor.sharePercentage = (investor.amountContributed / totalInvestment) * 100;
       await investor.save();
     }
@@ -96,8 +104,8 @@ exports.createInvestor = async (req, res, next) => {
     const investor = await Investor.create(req.body);
     
     // Calculate and update share percentage immediately
-    const activeInvestors = await Investor.find({ isActive: true });
-    const totalInvestment = activeInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
+    const allInvestors = await Investor.find();
+    const totalInvestment = allInvestors.reduce((sum, inv) => sum + inv.amountContributed, 0);
     const sharePercentage = (investor.amountContributed / totalInvestment) * 100;
     
     // Update the investor with calculated percentage
@@ -202,20 +210,18 @@ exports.deleteInvestor = async (req, res, next) => {
       
       return success(res, 200, 'Investor and all related data deleted permanently. Share percentages will be updated shortly.');
     } else {
-      // الحذف من التوزيعات - تحويل إلى غير نشط
-      investor.isActive = false;
-      await investor.save();
+      await investor.deleteOne();
       
       // تحديث النسب بشكل منفصل
       setImmediate(async () => {
         try {
           await Investor.updateAllSharePercentages();
         } catch (updateError) {
-          console.error('Error updating share percentages after deactivation:', updateError);
+          console.error('Error updating share percentages after deletion:', updateError);
         }
       });
       
-      return success(res, 200, 'Investor marked as inactive and removed from profit distributions. Share percentages will be updated shortly.');
+      return success(res, 200, 'Investor deleted successfully. Share percentages will be updated shortly.');
     }
   } catch (err) {
     next(err);

@@ -22,7 +22,7 @@ router
   .get(protect, getInvestors)
   .post(protect, authorize('admin'), createInvestor);
 
-router
+router  
   .route('/:id')
   .get(protect, getInvestor)
   .put(protect, authorize('admin'), updateInvestor)
