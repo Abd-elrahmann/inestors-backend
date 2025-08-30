@@ -28,7 +28,7 @@ const InvestorSchema = new mongoose.Schema({
   sharePercentage: {
     type: Number,
     min: [0, 'Percentage cannot be negative'],
-    max: [100, 'Percentage cannot exceed 100'],
+    max: [100, 'Percentage cannot be more than 100'],
     default: 0
   },
   startDate: {
@@ -56,40 +56,18 @@ const InvestorSchema = new mongoose.Schema({
     trim: true,
     required: false
   },
-  address: {
-    type: String,
-    trim: true,
-    maxlength: [500, 'Address cannot be more than 500 characters']
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  documents: [{
-    name: String,
-    path: String,
-    uploadDate: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  notes: {
-    type: String
-  }
+ 
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// إضافة indexes لتحسين الأداء
 InvestorSchema.index({ nationalId: 1 }, { unique: true });
-InvestorSchema.index({ isActive: 1 });
 InvestorSchema.index({ fullName: 1 });
 InvestorSchema.index({ startDate: 1 });
 InvestorSchema.index({ fullName: 'text', nationalId: 'text' });
 
-// Virtual for transactions
 InvestorSchema.virtual('transactions', {
   ref: 'Transaction',
   localField: '_id',
@@ -97,7 +75,6 @@ InvestorSchema.virtual('transactions', {
   justOne: false
 });
 
-// Virtual for profit distributions
 InvestorSchema.virtual('profitDistributions', {
   ref: 'ProfitDistribution',
   localField: '_id',
@@ -105,7 +82,6 @@ InvestorSchema.virtual('profitDistributions', {
   justOne: false
 });
 
-// Calculate current balance
 InvestorSchema.methods.getCurrentBalance = async function() {
   await this.populate('transactions profitDistributions');
   
@@ -124,10 +100,8 @@ InvestorSchema.methods.getCurrentBalance = async function() {
   return balance;
 };
 
-// Update single investor's share percentage
 InvestorSchema.methods.updateSharePercentage = async function() {
   const total = await this.constructor.aggregate([
-    { $match: { isActive: true } },
     { $group: { _id: null, total: { $sum: '$amountContributed' } } }
   ]);
   
@@ -141,11 +115,8 @@ InvestorSchema.methods.updateSharePercentage = async function() {
   return this.sharePercentage;
 };
 
-// Update all active investors' share percentages
 InvestorSchema.statics.updateAllSharePercentages = async function() {
-  // Get total contributions from active investors
   const totalResult = await this.aggregate([
-    { $match: { isActive: true } },
     { $group: { _id: null, total: { $sum: '$amountContributed' } } }
   ]);
   
@@ -155,9 +126,7 @@ InvestorSchema.statics.updateAllSharePercentages = async function() {
   
   const totalInvestment = totalResult[0].total;
   
-  // Update all active investors in bulk
   const result = await this.updateMany(
-    { isActive: true },
     [{
       $set: {
         sharePercentage: {
@@ -177,15 +146,13 @@ InvestorSchema.statics.updateAllSharePercentages = async function() {
   return result.modifiedCount > 0;
 };
 
-// Pre-save hook to update share percentage when amount changes
 InvestorSchema.pre('save', async function(next) {
-  if (this.isModified('amountContributed') || this.isModified('isActive')) {
+  if (this.isModified('amountContributed')) {
     const totalResult = await this.constructor.aggregate([
-      { $match: { isActive: true } },
       { $group: { _id: null, total: { $sum: '$amountContributed' } } }
     ]);
     
-    if (totalResult.length > 0 && totalResult[0].total > 0 && this.isActive) {
+    if (totalResult.length > 0 && totalResult[0].total > 0) {
       this.sharePercentage = parseFloat(
         ((this.amountContributed / totalResult[0].total) * 100).toFixed(2)
       );

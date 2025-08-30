@@ -2,57 +2,21 @@ const User = require('../../models/User');
 const ErrorResponse = require('../../utils/errorResponse');
 const { success, error } = require('../../utils/responseHandler');
 
-// @desc    Register a new user
-// @route   POST /api/auth/register
-// @access  Private/Admin
-exports.register = async (req, res, next) => {
-  try {
-    const { username, password, fullName, email, nationalId, role } = req.body;
-
-    // Validate required fields
-    if (!username || !password || !fullName || !email || !nationalId) {
-      return error(res, 400, 'Please provide all required fields: username, password, fullName, email, and nationalId');
-    }
-
-    // Create user - force role to 'user' for security
-    const user = await User.create({
-      username,
-      password,
-      fullName,
-      email,
-      nationalId,
-      role: 'user' // Always force user role for public registration
-    });
-
-    return success(res, 201, 'User registered successfully', {
-      user: {
-        id: user._id,
-        username: user.username,
-        fullName: user.fullName,
-        email: user.email,
-        nationalId: user.nationalId,
-        role: user.role
-      }
-    });
-  } catch (err) {
-    next(err);
-  }
-};
 
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
 exports.login = async (req, res, next) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
     // Validate inputs
-    if (!username || !password) {
-      return error(res, 400, 'Please provide username and password');
+    if (!email || !password) {
+      return error(res, 400, 'Please provide email and password');
     }
 
     // Check for user
-    const user = await User.findOne({ username }).select('+password');
+    const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
       return error(res, 401, 'Invalid credentials');
@@ -173,7 +137,6 @@ exports.updateDetails = async (req, res, next) => {
         email: user.email,
         nationalId: user.nationalId,
         role: user.role,
-        isActive: user.isActive,
         lastLogin: user.lastLogin,
         createdAt: user.createdAt
       }

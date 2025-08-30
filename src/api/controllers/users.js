@@ -1,17 +1,30 @@
 const User = require('../../models/User');
 const ErrorResponse = require('../../utils/errorResponse');
-const { success, error } = require('../../utils/responseHandler');
+const { success, error, getPaginationInfo } = require('../../utils/responseHandler');
 
 // @desc    Get all users
 // @route   GET /api/users
 // @access  Private/Admin
 exports.getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find({}).select('-password').sort({ createdAt: -1 });
-
+    const { page = 1, limit = 50, sort = 'fullName', search } = req.query;
+    const query = {};
+    if (search) {
+      query.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { nationalId: { $regex: search, $options: 'i' } }
+      ];
+    }
+    const total = await User.countDocuments(query);
+    const { startIndex, pagination } = getPaginationInfo(page, limit, total);
+    const users = await User.find(query).select('-password').sort({ [sort]: 1 }).skip(startIndex).limit(pagination.limit);
+    
     return success(res, 200, 'Users retrieved successfully', {
       users,
-      count: users.length
+      count: users.length,
+      pagination
     });
   } catch (err) {
     next(err);
@@ -54,7 +67,8 @@ exports.createUser = async (req, res, next) => {
       fullName,
       email,
       nationalId,
-      role: role || 'user'
+      role: role || 'user',
+      lastLogin: new Date()
     });
 
     return success(res, 201, 'User created successfully', {
@@ -66,7 +80,8 @@ exports.createUser = async (req, res, next) => {
         nationalId: user.nationalId,
         role: user.role,
         isActive: user.isActive,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin
       }
     });
   } catch (err) {
